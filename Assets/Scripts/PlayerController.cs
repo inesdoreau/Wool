@@ -3,24 +3,23 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(PlayerInput))]
 public class PlayerController : MonoBehaviour
 {
     [Header("Player")]
     [Tooltip("Move speed of the character in m/s")]
-    public float MoveSpeed = 2.0f;
+    public float MoveSpeed =50f;
 
     [Tooltip("How fast the character turns to face movement direction")]
     [Range(0.0f, 0.3f)]
     public float RotationSmoothTime = 0.12f;
 
     [Tooltip("Acceleration and deceleration")]
-    public float SpeedChangeRate = 10.0f;
+    public float SpeedChangeRate = 250.0f;
 
     [Space(10)]
     [Tooltip("The height the player can jump")]
-    public float JumpHeight = 1f;
+    public float JumpHeight = 50f;
 
     [Tooltip("The character uses its own gravity value. The engine default is -9.81f")]
     public float Gravity = -9.81f;
@@ -34,7 +33,7 @@ public class PlayerController : MonoBehaviour
 
     [Header("Player Grounded")]
     [Tooltip("If the character is grounded or not. Not part of the CharacterController built in grounded check")]
-    public bool Grounded = true;
+    public bool Grounded = true; 
 
     [Tooltip("Useful for rough ground")]
     public float GroundedOffset = -0.05f;
@@ -44,6 +43,10 @@ public class PlayerController : MonoBehaviour
 
     [Tooltip("What layers the character uses as ground")]
     public LayerMask GroundLayers;
+
+    [Header("YarnJoint")]
+    public GameObject connectedYarn;        
+    bool Stopped = true;
 
     [Header("Cinemachine")]
     [Tooltip("The follow target set in the Cinemachine Virtual Camera that the camera will follow")]
@@ -61,11 +64,17 @@ public class PlayerController : MonoBehaviour
     [Tooltip("For locking the camera position on all axis")]
     public bool LockCameraPosition = false;
 
+    
+
     // cinemachine
     private float _cinemachineTargetYaw;
     private float _cinemachineTargetPitch;
 
     // player
+    public float speed;
+    public float verticalVelocity;
+    public float horizontalVelocity;
+
     private float _speed;
     private float _animationBlend;
     private float _targetRotation = 0.0f;
@@ -86,8 +95,8 @@ public class PlayerController : MonoBehaviour
 
     private PlayerInput _playerInput;
     private Animator _animator;
-    private CharacterController _controller;
     private AssetsInputs _input;
+    private Rigidbody _rigidbody;
     private GameObject _mainCamera;
 
     private const float _threshold = 0.01f;
@@ -116,9 +125,10 @@ public class PlayerController : MonoBehaviour
         _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
 
         _hasAnimator = TryGetComponent(out _animator);
-        _controller = GetComponent<CharacterController>();
         _input = GetComponent<AssetsInputs>();
         _playerInput = GetComponent<PlayerInput>();
+        _rigidbody = GetComponent<Rigidbody>();
+
 
         AssignAnimationIDs();
 
@@ -129,8 +139,9 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-        JumpAndGravity();
-        GroundedCheck();
+        //JumpAndGravity();
+        //GroundedCheck();
+        Jump();
         Move();
     }
 
@@ -152,6 +163,14 @@ public class PlayerController : MonoBehaviour
             transform.position.z);
         Grounded = Physics.CheckSphere(spherePosition, GroundedRadius, GroundLayers,
             QueryTriggerInteraction.Ignore);
+
+        
+        
+        //Debug.Log(this.transform.position);
+        //if (distFromLastYarn > 1)
+        //{
+        //    Grounded = true;
+        //}
     }
 
     private void CameraRotation()
@@ -177,6 +196,80 @@ public class PlayerController : MonoBehaviour
 
     private void Move()
     {
+        float targetSpeed = MoveSpeed;
+
+        if (_input.move == Vector2.zero) targetSpeed = 0.0f;
+
+        // a reference to the players current horizontal velocity
+        float currentHorizontalSpeed = new Vector3(_rigidbody.velocity.x, 0.0f, _rigidbody.velocity.z).magnitude;
+
+        float speedOffset = 1f;
+        float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
+
+        // accelerate or decelerate to target speed
+        if (currentHorizontalSpeed < targetSpeed - speedOffset ||
+            currentHorizontalSpeed > targetSpeed + speedOffset)
+        {
+            // creates curved result rather than a linear one giving a more organic speed change
+            // note T in Lerp is clamped, so we don't need to clamp our speed
+            _speed = Mathf.Lerp(currentHorizontalSpeed, targetSpeed * inputMagnitude,
+                Time.deltaTime * SpeedChangeRate);
+
+            // round speed to 3 decimal places
+            _speed = Mathf.Round(_speed * 1000f) / 1000f;
+        }
+        else
+        {
+            _speed = targetSpeed;
+        }
+
+        _animationBlend = Mathf.Lerp(_animationBlend, targetSpeed, Time.deltaTime * SpeedChangeRate);
+        if (_animationBlend < 0.01f) _animationBlend = 0f;
+        // normalise input direction
+        Vector3 inputDirection = new Vector3(_input.move.x, 0.0f, _input.move.y).normalized;
+
+        // note: Vector2's != operator uses approximation so is not floating point error prone, and is cheaper than magnitude
+        // if there is a move input rotate player when the player is moving
+        if (_input.move != Vector2.zero)
+        {
+            _targetRotation = Mathf.Atan2(inputDirection.x, inputDirection.z) * Mathf.Rad2Deg +
+                              _mainCamera.transform.eulerAngles.y;
+            float rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, _targetRotation, ref _rotationVelocity,
+                RotationSmoothTime);
+
+            // rotate to face input direction relative to camera position
+            transform.rotation = Quaternion.Euler(0.0f, rotation, 0.0f);
+        }
+
+
+        Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
+
+        // move the player        
+        _rigidbody.AddForce(targetDirection.normalized * (_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime, ForceMode.VelocityChange);
+
+        // update animator if using character
+        if (_hasAnimator)
+        {
+            _animator.SetFloat(_animIDSpeed, _animationBlend);
+            _animator.SetFloat(_animIDMotionSpeed, inputMagnitude);
+        }
+    }
+
+    private void Jump()
+    {
+        Grounded = Physics.Raycast(transform.position, Vector3.down, transform.localScale.y / 2 + 0.1f);        
+
+        if (!Grounded)
+            return;
+
+        if (_input.jump)
+        {
+            _rigidbody.AddForce(0, JumpHeight, 0);
+        }
+    }
+
+    private void Move2()
+    {
         // set target speed based on move speed, sprint speed and if sprint is pressed
         float targetSpeed = MoveSpeed;
 
@@ -187,7 +280,7 @@ public class PlayerController : MonoBehaviour
         if (_input.move == Vector2.zero) targetSpeed = 0.0f;
 
         // a reference to the players current horizontal velocity
-        float currentHorizontalSpeed = new Vector3(_controller.velocity.x, 0.0f, _controller.velocity.z).magnitude;
+        float currentHorizontalSpeed = /*new Vector3(_controller.velocity.x, 0.0f, _controller.velocity.z).magnitude*/0;
 
         float speedOffset = 0.1f;
         float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
@@ -232,8 +325,10 @@ public class PlayerController : MonoBehaviour
         Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
 
         // move the player
-        _controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) +
-                         new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+        //_controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+       
+        GetComponent<Rigidbody>().AddForce(transform.forward * _input.move.y, ForceMode.Acceleration);
+        GetComponent<Rigidbody>().AddForce(transform.right * _input.move.x, ForceMode.Acceleration);
 
         // update animator if using character
         if (_hasAnimator)
@@ -313,7 +408,7 @@ public class PlayerController : MonoBehaviour
 
         // when selected, draw a gizmo in the position of, and matching radius of, the grounded collider
         Gizmos.DrawSphere(
-            new Vector3(transform.position.x, transform.position.y - GroundedOffset, transform.position.z),
+            new Vector3(transform.position.x, transform.position.y, transform.position.z),
             GroundedRadius);
     }
 }

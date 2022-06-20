@@ -10,22 +10,36 @@ public class YarnCreator : MonoBehaviour
 	public PathAutoEndPoints pathInfo;
 	public int numPoints = 20;
 	public float meshThickness = 1;
-	public MeshFilter meshFilter;
 	public int cylinderResolution = 5;
 
 	float pathLength;
 	float pointSpacing;
-	Vector3[] points;
-	Vector3[] pointsOld;
+	List<Vector3> points;
+	List<Vector3> pointsOld;
+	Vector3[] pointsCreator;
 
-	Mesh mesh;
 	bool pinStart = true;
 	bool pinEnd = true;
 
+	[SerializeField]
+	GameObject meshHolder;
+
+	MeshFilter meshFilter;
+	MeshRenderer meshRenderer;
+	MeshCollider meshCollider;
+	Mesh mesh;
+
 	void Start()
 	{
-		points = new Vector3[numPoints];
-		pointsOld = new Vector3[numPoints];
+		AssignMeshComponents();
+		points = new List<Vector3>();
+		pointsOld = new List<Vector3>();
+
+		for (int i = 0; i < numPoints; i++)
+        {
+			points.Add(Vector3.zero);
+			pointsOld.Add(Vector3.zero);
+        }
 
 		for (int i = 0; i < numPoints; i++)
 		{
@@ -38,23 +52,26 @@ public class YarnCreator : MonoBehaviour
 		{
 			pathLength += Vector3.Distance(points[i], points[i + 1]);
 		}
-		pointSpacing = pathLength / points.Length;
+		pointSpacing = pathLength / points.Count;
 	}
 
 	void LateUpdate()
 	{
-		CylinderGenerator.CreateMesh(ref mesh, points, cylinderResolution, meshThickness);
+		pointsCreator = points.ToArray();
+		CylinderGenerator.CreateMesh(ref mesh, pointsCreator, cylinderResolution, meshThickness);
 		meshFilter.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity); // mesh is in worldspace
 		meshFilter.mesh = mesh;
+		meshCollider.sharedMesh = mesh;
 	}
 
 
 	void FixedUpdate()
 	{
 		points[0] = pathInfo.origin.position;
-		for (int i = 0; i < points.Length; i++)
+
+		for (int i = 0; i < points.Count; i++)
 		{
-			bool pinned = (i == 0 && pinStart) || (i == points.Length - 1 && pinEnd);
+			bool pinned = (i == 0 && pinStart) || (i == points.Count - 1 && pinEnd);
 			if (!pinned)
 			{
 				Vector3 curr = points[i];
@@ -69,18 +86,32 @@ public class YarnCreator : MonoBehaviour
 			ConstrainConnections();
 		}
 
-		float stretchDstAtPlug = Vector3.Distance(points[numPoints - 2], points[numPoints - 1]) - pointSpacing;
-		if (stretchDstAtPlug > 0.07f)
-		{
-			//pinEnd = false;
-			//Debug.Log("Plug pulled out");
-		}
+		//float stretchDstAtPlug = Vector3.Distance(points[numPoints - 2], points[numPoints - 1]) - pointSpacing;
+		//if (stretchDstAtPlug > 0.07f)
+		//{
+		//	//pinEnd = false;
+		//	//Debug.Log("Plug pulled out");
+		//}
 
+	}
+
+	public void AddPoint()
+    {		
+		points.Add(Vector3.zero);
+		pointsOld.Add(Vector3.zero);
+		numPoints++;
+	}
+
+	public void RemovePoint()
+    {
+		points.RemoveAt(0);
+		pointsOld.RemoveAt(0);
+		numPoints++;
 	}
 
 	void ConstrainConnections()
 	{
-		for (int i = 0; i < points.Length - 1; i++)
+		for (int i = 0; i < points.Count - 1; i++)
 		{
 			Vector3 centre = (points[i] + points[i + 1]) / 2;
 			Vector3 offset = points[i] - points[i + 1];
@@ -95,7 +126,7 @@ public class YarnCreator : MonoBehaviour
 				{
 					points[i] = centre + dir * pointSpacing / 2;
 				}
-				if (i + 1 != points.Length - 1 || !pinEnd)
+				if (i + 1 != points.Count - 1 || !pinEnd)
 				{
 					points[i + 1] = centre - dir * pointSpacing / 2;
 				}
@@ -105,25 +136,57 @@ public class YarnCreator : MonoBehaviour
 
 	void ConstrainCollisions()
 	{
+        for (int i = 0; i < points.Count; i++)
+        {
+            bool pinned = i == 0 || i == points.Count - 1;
+            if (!pinned)
+            {
+                if (points[i].y < meshThickness / 2)
+                {
+                    points[i].Set(points[i].x, meshThickness / 2, points[i].z);
+                }
+            }
+        }
+    }
+	// Add MeshRenderer and MeshFilter components to this gameobject if not already attached
+	void AssignMeshComponents()
+	{
 
-		for (int i = 0; i < points.Length; i++)
+		if (meshHolder == null)
 		{
-			bool pinned = i == 0 || i == points.Length - 1;
-			if (!pinned)
-			{
-				if (points[i].y < meshThickness / 2)
-				{
-					points[i].y = meshThickness / 2;
-				}
-			}
+			meshHolder = new GameObject("Mesh Holder");
 		}
+
+		meshHolder.transform.rotation = Quaternion.identity;
+		meshHolder.transform.position = Vector3.zero;
+		meshHolder.transform.localScale = Vector3.one;
+
+		// Ensure mesh renderer and filter components are assigned
+		if (!meshHolder.gameObject.GetComponent<MeshFilter>())
+		{
+			meshHolder.gameObject.AddComponent<MeshFilter>();
+		}
+		if (!meshHolder.GetComponent<MeshRenderer>())
+		{
+			meshHolder.gameObject.AddComponent<MeshRenderer>();
+		}
+
+		meshRenderer = meshHolder.GetComponent<MeshRenderer>();
+		meshFilter = meshHolder.GetComponent<MeshFilter>();
+		meshCollider = meshHolder.GetComponent<MeshCollider>();
+		if (mesh == null)
+		{
+			mesh = new Mesh();
+		}
+		meshFilter.sharedMesh = mesh;
+		meshCollider.sharedMesh = mesh;
 	}
 
 	void OnDrawGizmos()
 	{
 		if (points != null)
 		{
-			for (int i = 0; i < points.Length; i++)
+			for (int i = 0; i < points.Count; i++)
 			{
 				Gizmos.DrawSphere(points[i], 0.05f);
 			}
