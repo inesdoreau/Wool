@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4360873174175171789
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4360873174175171791}
+  - component: {fileID: 4360873174175171790}
+  m_Layer: 0
+  m_Name: YarnCreator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4360873174175171791
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4360873174175171789}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.1, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4360873174175171790
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4360873174175171789}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2bb4d50ba15da594696149e0dcbe03c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  woolBall: {fileID: 6498465974718514898, guid: 27b8e63fe2fb7f746b3bd3b30684da09, type: 3}
+  yarnPrefab: {fileID: 4840122395637869569, guid: c901d5339bf8ed34b9b01ee99645813d, type: 3}
+  parentObject: {fileID: 4360873174175171789}
+  startPoint: {fileID: 0}
+  lenght: 10
+  yarnDistance: 0.1
+  reset: 0
+  spawn: 0
+  snapFirst: 1
+  snapLast: 1
+  block: 0
+  rewind: 0
+  RewindTimeout: 0.1

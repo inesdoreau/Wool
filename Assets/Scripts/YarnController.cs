@@ -1,11 +1,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class YarnController : MonoBehaviour
 {
     [SerializeField]
-    GameObject woolBall;
+    PlayerController woolBall;
     [SerializeField]
     GameObject yarnPrefab;
     [SerializeField]
@@ -16,6 +17,7 @@ public class YarnController : MonoBehaviour
 
     List<GameObject> yarnRope = new List<GameObject>();
     GameObject wool;
+    private AssetsInputs _input;
 
     [SerializeField]
     [Range(1, 1000)]
@@ -34,12 +36,20 @@ public class YarnController : MonoBehaviour
     [SerializeField]
     bool snapLast;
 
+    [SerializeField]
+    bool block; 
+    [SerializeField]
+    bool rewind;
+
+    public float RewindTimeout = 0.50f;
+    private float _rewindTimeoutDelta;
 
 
     private void Start()
     {         
         CreateWool();
         CreateStartPoint();
+        _rewindTimeoutDelta = RewindTimeout;
     }
 
     // Update is called once per frame
@@ -78,8 +88,10 @@ public class YarnController : MonoBehaviour
 
     private void CreateWool()
     {
-        wool = Instantiate(woolBall, new Vector3(transform.position.x + yarnDistance, transform.position.y, transform.position.z), Quaternion.identity, parentObject.transform);
-        wool.name = parentObject.transform.childCount.ToString();
+        wool = Instantiate(woolBall.gameObject, new Vector3(transform.position.x + yarnDistance, transform.position.y, transform.position.z), Quaternion.identity, parentObject.transform);
+        wool.gameObject.name = parentObject.transform.childCount.ToString();
+
+        _input = wool.GetComponent<AssetsInputs>();
     }
 
     private void ConnectLastYarn()
@@ -89,13 +101,36 @@ public class YarnController : MonoBehaviour
 
     public void AddYarn()
     {
-       // Debug.Log(Vector3.Distance(wool.transform.position, yarnRope[yarnRope.Count -1].transform.position));
+        if (_input.rewind && yarnRope.Count != 1)
+        {
+            if(_rewindTimeoutDelta >= 0)
+            {
+                _rewindTimeoutDelta -= Time.deltaTime;
+            }
+            else
+            {
+                GameObject lastYarn = yarnRope[yarnRope.Count - 1];
+                wool.transform.position =  lastYarn.transform.position; 
+                yarnRope.Remove(lastYarn);
+                Destroy(lastYarn);            
+                wool.GetComponent<SpringJoint>().connectedBody = parentObject.transform.Find((parentObject.transform.childCount - 1).ToString()).GetComponent<Rigidbody>();
+                _rewindTimeoutDelta = RewindTimeout;
+            }            
+            return;
+        }
 
-        if (Vector3.Distance(wool.transform.position, yarnRope[yarnRope.Count-1].transform.position) > 0.42f)
+        if (_input.block)
+            return;
+
+        Transform previousYarnTf = yarnRope[yarnRope.Count - 1].transform;
+        Vector3 distance = previousYarnTf.position - wool.transform.position;
+
+        if (distance.magnitude > yarnDistance)
         {
             GameObject tmp;
-            tmp = Instantiate(yarnPrefab, new Vector3(wool.transform.position.x - yarnDistance, wool.transform.position.y, wool.transform.position.z), Quaternion.identity, parentObject.transform);
-            tmp.transform.forward = wool.transform.forward;
+            tmp = Instantiate(yarnPrefab, new Vector3(wool.transform.position.x, wool.transform.position.y, wool.transform.position.z), Quaternion.identity, parentObject.transform);
+            //tmp.transform.forward = distance/distance.magnitude ;
+
             tmp.name = parentObject.transform.childCount.ToString();
             tmp.GetComponent<HingeJoint>().connectedBody = parentObject.transform.Find((parentObject.transform.childCount-1).ToString()).GetComponent<Rigidbody>();
            

@@ -11,6 +11,8 @@ public class AssetsInputs : MonoBehaviour
 	public Vector2 look;
 	public bool jump;
 	public bool sprint;
+	public bool block;
+	public bool rewind;
 
 	[Header("Movement Settings")]
 	public bool analogMovement;
@@ -35,6 +37,27 @@ public class AssetsInputs : MonoBehaviour
 	public void OnJump(InputValue value)
 	{
 		JumpInput(value.isPressed);
+	}
+
+	public void OnBlock(InputValue value)
+	{		
+		BlockYarnCreation(value.isPressed);
+	}
+
+
+	public void OnBack(InputValue value)
+	{
+		Rewind(value.isPressed);
+	}
+
+	private void Rewind(bool newRewindState)
+	{
+		rewind = newRewindState;
+	}
+
+	private void BlockYarnCreation(bool newBlockState)
+	{
+		block = newBlockState;
 	}
 
 	public void MoveInput(Vector2 newMoveDirection)

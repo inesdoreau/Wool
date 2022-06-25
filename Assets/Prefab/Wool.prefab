@@ -179,7 +179,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6498465974718514896}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -0.056215383, y: 0.09999998, z: 1.4276619}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
   - {fileID: 4508488777191309487}
@@ -213,7 +213,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 578419f68ad3b5c409f00cbc1aeb9775, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  MoveSpeed: 20
+  MoveSpeed: 10
   RotationSmoothTime: 0.12
   SpeedChangeRate: 250
   JumpHeight: 10
@@ -225,7 +225,7 @@ MonoBehaviour:
   GroundedRadius: 0.1
   GroundLayers:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 64
   connectedYarn: {fileID: 0}
   CinemachineCameraTarget: {fileID: 6498465975258108736}
   TopClamp: 70
@@ -251,6 +251,8 @@ MonoBehaviour:
   look: {x: 0, y: 0}
   jump: 0
   sprint: 0
+  block: 0
+  rewind: 0
   analogMovement: 0
   cursorLocked: 1
   cursorInputForLook: 1
