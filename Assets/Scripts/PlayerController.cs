@@ -7,7 +7,8 @@ using UnityEngine.InputSystem;
 public class PlayerController : MonoBehaviour
 {
     [Header("Player")]
-    public float MoveSpeed = 50f;
+    public float MoveSpeed = 10f;
+    public float ClimbSpeed = 5f;
     [Range(0.0f, 0.3f)]
     public float RotationSmoothTime = 0.12f;
     public float SpeedChangeRate = 250.0f;
@@ -20,15 +21,15 @@ public class PlayerController : MonoBehaviour
     public float JumpTimeout = 0.50f;
     public float FallTimeout = 0.15f;
 
-    [Header("Player Grounded")]
-    public bool Grounded = true; 
-    public float GroundedOffset = -0.05f;
-    public float GroundedRadius = 0.1f;
-    public LayerMask GroundLayers;
+    [Space(10)]
+    public float SpringValue = 10.0f;
+    public SpringJoint _joint;
 
-    [Header("YarnJoint")]
-    public GameObject connectedYarn;        
-    bool Stopped = true;
+    [Header("Player State")]
+    public bool Grounded = true;
+    public LayerMask GroundLayers;
+    public bool Climbing = false;
+    public Vector3 velcroNormal;
 
     [Header("Cinemachine")]
     public GameObject CinemachineCameraTarget;
@@ -46,12 +47,11 @@ public class PlayerController : MonoBehaviour
     public float verticalVelocity;
     public float horizontalVelocity;
 
-    private float _speed;
     private float _animationBlend;
     private float _targetRotation = 0.0f;
     private float _rotationVelocity;
     private float _verticalVelocity;
-    private float _terminalVelocity = 53.0f;
+    private float _terminalVelocity = 2f;
 
     // timeout deltatime
     private float _jumpTimeoutDelta;
@@ -59,9 +59,6 @@ public class PlayerController : MonoBehaviour
 
     // animation IDs
     private int _animIDSpeed;
-    private int _animIDGrounded;
-    private int _animIDJump;
-    private int _animIDFreeFall;
     private int _animIDMotionSpeed;
 
     private PlayerInput _playerInput;
@@ -69,7 +66,6 @@ public class PlayerController : MonoBehaviour
     private AssetsInputs _input;
     private Rigidbody _rigidbody;
     private GameObject _mainCamera;
-    private SpringJoint _joint;
 
     private const float _threshold = 0.01f;
 
@@ -100,7 +96,6 @@ public class PlayerController : MonoBehaviour
         _input = GetComponent<AssetsInputs>();
         _playerInput = GetComponent<PlayerInput>();
         _rigidbody = GetComponent<Rigidbody>();
-        _joint = GetComponent<SpringJoint>();
 
         AssignAnimationIDs();
 
@@ -111,11 +106,16 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-        //JumpAndGravity();
-        //GroundedCheck();
-        Move();
-        Jump();
-        Block();
+        if (!Climbing)
+        {
+            Move();
+            Jump();
+        }
+        else
+        {
+            Climb(velcroNormal);
+        }
+
     }
 
     private void LateUpdate()
@@ -129,15 +129,15 @@ public class PlayerController : MonoBehaviour
         _animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
     }
 
-    private void Block()
+    public void Block(bool blocked)
     {
-        if (_input.block)
+        if (blocked)
         {
-            _joint.spring = 1000;
+            _joint.spring = SpringValue*100;
         }
         else
         {
-            _joint.spring = 100;
+            _joint.spring = SpringValue;
         }
     }
 
@@ -167,29 +167,8 @@ public class PlayerController : MonoBehaviour
         float targetSpeed = MoveSpeed;
 
         if (_input.move == Vector2.zero) targetSpeed = 0.0f;
-
-        // a reference to the players current horizontal velocity
-        float currentHorizontalSpeed = new Vector3(_rigidbody.velocity.x, 0.0f, _rigidbody.velocity.z).magnitude;
-
-        float speedOffset = 1f;
         float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
 
-        // accelerate or decelerate to target speed
-        if (currentHorizontalSpeed < targetSpeed - speedOffset ||
-            currentHorizontalSpeed > targetSpeed + speedOffset)
-        {
-            // creates curved result rather than a linear one giving a more organic speed change
-            // note T in Lerp is clamped, so we don't need to clamp our speed
-            _speed = Mathf.Lerp(currentHorizontalSpeed, targetSpeed * inputMagnitude,
-                Time.deltaTime * SpeedChangeRate);
-
-            // round speed to 3 decimal places
-            _speed = Mathf.Round(_speed * 1000f) / 1000f;
-        }
-        else
-        {
-            _speed = targetSpeed;
-        }
 
         _animationBlend = Mathf.Lerp(_animationBlend, targetSpeed, Time.deltaTime * SpeedChangeRate);
         if (_animationBlend < 0.01f) _animationBlend = 0f;
@@ -212,8 +191,14 @@ public class PlayerController : MonoBehaviour
 
         Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
 
-        // move the player        
-        _rigidbody.AddForce(targetDirection.normalized * (_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime, ForceMode.VelocityChange);
+        // move the player
+        //_controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+        _rigidbody.AddForce(targetDirection.normalized * (targetSpeed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime, ForceMode.VelocityChange);
+        _rigidbody.velocity = Vector3.ClampMagnitude(_rigidbody.velocity, MoveSpeed);
+
+        if (_input.move == Vector2.zero && Grounded)
+            _rigidbody.velocity = new Vector3(0, _rigidbody.velocity.y, 0);
+
 
         // update animator if using character
         if (_hasAnimator)
@@ -227,13 +212,108 @@ public class PlayerController : MonoBehaviour
     {
         Grounded = Physics.Raycast(transform.position, Vector3.down, transform.localScale.y / 2 + 0.1f, GroundLayers, QueryTriggerInteraction.Ignore);        
 
-        if (!Grounded)
-            return;
+        if (Grounded)
+        {
+            // reset the fall timeout timer
+            _fallTimeoutDelta = FallTimeout;
+
+            // stop our velocity dropping infinitely when grounded
+            if (_verticalVelocity < 0.0f)
+            {
+                _verticalVelocity = 0f;
+            }
+
+            // Jump
+            if (_input.jump && _jumpTimeoutDelta <= 0.0f)
+            {
+                // the square root of H * -2 * G = how much velocity needed to reach desired height
+                _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+
+            }
+
+            // jump timeout
+            if (_jumpTimeoutDelta >= 0.0f)
+            {
+                _jumpTimeoutDelta -= Time.deltaTime;
+            }
+        }
+        else
+        {
+            // reset the jump timeout timer
+            _jumpTimeoutDelta = JumpTimeout;
+
+            // fall timeout
+            if (_fallTimeoutDelta >= 0.0f)
+            {
+                _fallTimeoutDelta -= Time.deltaTime;
+            }
+
+            _verticalVelocity = 0f;
+            // if we are not grounded, do not jump
+            _input.jump = false;
+        }
+
+    }
+
+    private void Climb(Vector3 normal)
+    {
+        float targetSpeed = ClimbSpeed;
+        if (_input.move == Vector2.zero) targetSpeed = 0.0f;
+        float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
+        _animationBlend = Mathf.Lerp(_animationBlend, targetSpeed, Time.deltaTime * SpeedChangeRate);
+        if (_animationBlend < 0.01f) _animationBlend = 0f;
+
+        Vector3 inputDirection = new Vector3(0,0,0);
+        Vector3 jump = new Vector3(0, 0, 0);
+
+
+        if(normal.x != 0)
+            inputDirection = new Vector3(0, _input.move.y , _input.move.x).normalized;
+
+        else if (normal.y != 0)
+            inputDirection = new Vector3(_input.move.x, 0 , -_input.move.y).normalized;
+
+        else if (normal.z != 0)
+            inputDirection = new Vector3(-_input.move.x, _input.move.y, 0).normalized;
+
 
         if (_input.jump)
         {
-            _rigidbody.AddForce(0, JumpHeight, 0);
+            jump = normal * ClimbSpeed;
+
         }
+        // note: Vector2's != operator uses approximation so is not floating point error prone, and is cheaper than magnitude
+        // if there is a move input rotate player when the player is moving
+        if (_input.move != Vector2.zero)
+        {
+            _targetRotation = Mathf.Atan2(_input.move.x, _input.move.y) * Mathf.Rad2Deg +
+                                _mainCamera.transform.eulerAngles.y;
+            float rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, _targetRotation, ref _rotationVelocity,
+                RotationSmoothTime);
+
+            // rotate to face input direction relative to camera position
+            transform.rotation = Quaternion.Euler(0.0f, rotation, 0.0f);
+        }
+
+        _rigidbody.velocity = inputDirection.normalized * ClimbSpeed;
+
+        _rigidbody.velocity = Vector3.ClampMagnitude(_rigidbody.velocity, ClimbSpeed);
+
+        _rigidbody.AddForce(jump, ForceMode.VelocityChange);
+
+        if (_input.move == Vector2.zero )
+            _rigidbody.velocity = new Vector3(0, 0, 0);
+
+
+
+        // update animator if using character
+        if (_hasAnimator)
+        {
+            _animator.SetFloat(_animIDSpeed, _animationBlend);
+            _animator.SetFloat(_animIDMotionSpeed, inputMagnitude);
+        }
+
+        
     }
 
 
@@ -255,6 +335,6 @@ public class PlayerController : MonoBehaviour
         // when selected, draw a gizmo in the position of, and matching radius of, the grounded collider
         Gizmos.DrawSphere(
             new Vector3(transform.position.x, transform.position.y, transform.position.z),
-            GroundedRadius);
+            0.1f);
     }
 }
